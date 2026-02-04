@@ -6,21 +6,22 @@
  */
 class mct_tw_Api {
   
-	public $bearer_token,
+	public $bearer_token;
 		
 	// Default credentials
-	$args = array(
+	public $args = array(
 		'consumer_key'			=>	'default_consumer_key',
 		'consumer_secret'		=>	'default_consumer_secret'
-	),
+	);
 	
 	// Default type of the resource and cache duration
-	$query_args = array(
+	public $query_args = array(
 		'type'				=>	'statuses/user_timeline',
 		'cache'				=>	7200 //2 hours
-	),
-        $api_errmsg = '',
-	$has_error = false;
+	);
+        
+        public $api_errmsg = '';
+	public $has_error = false;
 	
 	/**
 	 * WordPress Twitter API Constructor

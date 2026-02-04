@@ -161,8 +161,9 @@ function mct_cs_validate($token, $json_obj){
     if ($json_obj->type == 'Classify') {
         $post_arr = get_object_vars($json_obj->args);
         if ($post_arr['page'] == "Not Here"){
-            $sql = "UPDATE wp_cs_validate SET `classify_calls` = $update_cnt WHERE `token` = '$token'";
-            $sql_result = mysql_query($sql);
+            // mysql_query removed in PHP 7.0 - use mysqli or PDO
+            // $sql = "UPDATE wp_cs_validate SET `classify_calls` = $update_cnt WHERE `token` = '$token'";
+            // $sql_result = mysql_query($sql);
         }
     }
     */

@@ -4,9 +4,11 @@
  * Plugin Name: MyCurator
  * Plugin URI: http://www.target-info.com
  * Description: Automatically curates articles from your feeds and alerts, using the Relevance engine to find only the articles you like
- * Version: 3.79
+ * Version: 3.80
  * Author: Mark Tilly
  * Author URL: http://www.target-info.com
+ * Requires at least: 5.0
+ * Requires PHP: 8.0
  * License: GPLv2 or later
  */
 /*
@@ -44,7 +46,7 @@ define ('MCT_AI_LOG_ERROR','ERROR');
 define ('MCT_AI_LOG_ACTIVITY','ARTICLE');
 define ('MCT_AI_LOG_PROCESS','PROCESS');
 define ('MCT_AI_LOG_REQUEST','REQUEST');
-define ('MCT_AI_VERSION', '3.79');
+define ('MCT_AI_VERSION', '3.80');
 
 //Globals for DB
 global $wpdb, $ai_topic_tbl, $ai_postsread_tbl, $ai_sl_pages_tbl, $ai_logs_tbl, $proc_id, $proc_cnt;
@@ -271,7 +273,6 @@ function mct_ai_firstpage() {
     $logspage = $ruri.'_Logs';
     ?>
     <div class='wrap' >
-        <?php //screen_icon('plugins'); ?>
         <h2>MyCurator Dashboard</h2> 
         <?php if (empty($token) || empty($topics)){ // Select header info?>
         <p> Welcome to MyCurator - lets get started!  First you'll paste in your API Key and Validate it.  Then our Setup Wizard will 
@@ -1153,7 +1154,6 @@ function mct_ai_topicpage() {
     //Render page
     ?>
     <div class='wrap'>
-    <?php //screen_icon('plugins'); ?>
     <h2>MyCurator <?php echo $pagetitle; ?></h2>  
     <?php 
     echo ($backpage);
@@ -1496,7 +1496,6 @@ function mct_ai_optionpage() {
     //]]>
     </script>
     <div class='wrap'>
-    <?php //screen_icon('plugins'); ?>
     <h2>MyCurator Options</h2> 
     <?php if (!empty($msg)){ ?>
        <div id="message" class="updated" ><p><strong><?php echo $msg ; ?></strong></p></div>
@@ -2012,7 +2011,6 @@ function mct_ai_topicsource() {
     $topic_vals = $wpdb->get_results($sql, ARRAY_A);
     ?>
     <div class='wrap'>
-    <?php //screen_icon('plugins'); ?>
     <h2>MyCurator Topic Sources</h2>
     <?php echo($backpage); ?>
     <p>MyCurator relates Sources (RSS feeds, Alerts, news) to the Topics you set up based on Source Groups. Click the checkbox for each Source Group that you wish to assign to this Topic.  
@@ -2128,7 +2126,6 @@ function mct_ai_removepage() {
 
     ?>
     <div class='wrap'>
-    <?php //screen_icon('plugins'); ?>
     <h2>MyCurator Remove and Rename Topics</h2>  
     <?php echo ($backpage); ?>
     <?php if (!empty($msg)) echo ('<div id="message" class="'.$msgclass.'" ><h4>'.$msg.'</h4></div>'); ?>
@@ -2189,7 +2186,6 @@ function mct_ai_getitpage() {
     </script>
 
     <div class="wrap">
-    <?php //screen_icon('tools'); ?>
     <h2><?php echo esc_html( $title ); ?></h2>
 
     <?php if ( current_user_can('edit_posts') ) : ?>
@@ -2389,7 +2385,6 @@ function mct_ai_logspage() {
     }
     ?>
     <div class='wrap'>
-    <?php //screen_icon('plugins'); ?>
     <h2>MyCurator Logs</h2>    
      <p>MyCurator keeps logs of what it does with each article found in your feed sources.  If an article is not posted to your Training Posts
          you can read the Message column to see why.  You can choose Error from the drop down named Article to see any feed or processing 
@@ -2540,7 +2535,6 @@ function mct_ai_logreport(){
     $logspage = str_replace('_Report','_Logs',$ruri);
     //Heading
     echo "<div class='wrap'>";
-    //screen_icon('plugins');
     echo "<h2>MyCurator Performance Report</h2>";
     echo "<p>Summary of items Found in the Logs for the last ".$mct_ai_optarray['ai_log_days']." days ordered by Topic and by Source.</p>";
     echo '<p><strong><a href="'.admin_url('edit.php?post_type=target_ai').'">Articles Posted</a></strong> - These articles will have been posted to your Training Posts page.</p>';
