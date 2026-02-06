@@ -115,11 +115,14 @@ function mct_cs_cloud_dispatch($json_post){
     }
     if ($json_obj->type == 'GetPlan') {
         error_log("GetPlan request for user: " . $userid);
-        $arr = get_object_vars($json_obj->args);
-        if (!empty($arr['blogcnt'])){
-            //log this mu site usage
-            error_log("MU Net: ".$token." Blogs: ".$arr['blogcnt']." ProcQ ".implode(',',$arr['procqueue']));   
-            return json_encode("Logged");
+        // Check if args is an object before calling get_object_vars
+        if (isset($json_obj->args) && is_object($json_obj->args)) {
+            $arr = get_object_vars($json_obj->args);
+            if (!empty($arr['blogcnt'])){
+                //log this mu site usage
+                error_log("MU Net: ".$token." Blogs: ".$arr['blogcnt']." ProcQ ".implode(',',$arr['procqueue']));   
+                return json_encode("Logged");
+            }
         }
         $plan_arr = mct_cs_getplan($userid);
         if (empty($plan_arr)) {
