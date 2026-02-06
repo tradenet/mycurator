@@ -49,7 +49,9 @@ if ($_SERVER['HTTP_CONTENT_ENCODING'] == 'gzip'){
     $request_body = gzuncompress($request_body);
 }
 $response = mct_cs_cloud_dispatch($request_body);
- mysqli_close($dblink);
+ if ($dblink) {
+     mysqli_close($dblink);
+ }
  if ($gzip_ok && strlen($response) > 1000) {
      $response = gzcompress($response);
      header("Content-Type: application/json-gzip");  //Use content-type as it is passed through curl getinfo - but yes, not very 'standard'
