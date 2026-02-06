@@ -87,6 +87,9 @@ require_once('mycurator_cloud_init.php'); //db globals
 require_once('mycurator_cloud_classify.php');
 require_once('mycurator_cloud_fcns.php');
 
+// Start output buffering to catch any stray output
+ob_start();
+
 //Use below as start with curl call
 $request_body = file_get_contents('php://input');
 //echo $request_body; //use this to test argument calls
@@ -101,6 +104,13 @@ $response = mct_cs_cloud_dispatch($request_body);
  if ($dblink) {
      mysqli_close($dblink);
  }
+ 
+ // Clear any buffered output (errors, warnings, etc.)
+ $buffer = ob_get_clean();
+ if (!empty($buffer)) {
+     error_log("Unexpected output captured: " . $buffer);
+ }
+ 
  if ($gzip_ok && strlen($response) > 1000) {
      $response = gzcompress($response);
      header("Content-Type: application/json-gzip");  //Use content-type as it is passed through curl getinfo - but yes, not very 'standard'
@@ -183,7 +193,13 @@ function mct_cs_cloud_dispatch($json_post){
             error_log("GetPlan JSON encode error: " . json_last_error_msg() . " - Data: " . print_r($plan_arr, true));
             return json_encode(array('error' => 'JSON encoding failed: ' . json_last_error_msg()));
         }
-        error_log("GetPlan JSON response: " . $response);
+        // Validate the JSON is parseable
+        $test_decode = json_decode($response);
+        if ($test_decode === null && json_last_error() !== JSON_ERROR_NONE) {
+            error_log("GetPlan JSON validation failed: " . json_last_error_msg() . " - Response: " . $response);
+            return json_encode(array('error' => 'JSON validation failed'));
+        }
+        error_log("GetPlan JSON response (first 500 chars): " . substr($response, 0, 500));
         return $response;
     }
     } catch (Exception $e) {
