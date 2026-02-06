@@ -95,7 +95,11 @@ $request_body = file_get_contents('php://input');
 //echo $request_body; //use this to test argument calls
 //exit();
 //Log the request for debugging
-error_log("Cloud Service Request: Method=" . $_SERVER['REQUEST_METHOD'] . " Content-Type=" . ($_SERVER['CONTENT_TYPE'] ?? 'none') . " Length=" . strlen($request_body));
+$request_length = strlen($request_body);
+error_log("Cloud Service Request: Method=" . $_SERVER['REQUEST_METHOD'] . " Content-Type=" . ($_SERVER['CONTENT_TYPE'] ?? 'none') . " Length=" . $request_length);
+if ($request_length > 0 && $request_length < 200) {
+    error_log("Cloud Service Request Body: " . $request_body);
+}
 //Check encoding
 if (isset($_SERVER['HTTP_CONTENT_ENCODING']) && $_SERVER['HTTP_CONTENT_ENCODING'] == 'gzip'){
     $request_body = gzuncompress($request_body);
@@ -133,16 +137,16 @@ function mct_cs_cloud_dispatch($json_post){
         
         // Check if JSON decode was successful
         if ($json_obj === null && json_last_error() !== JSON_ERROR_NONE) {
-            error_log("JSON decode error: " . json_last_error_msg());
-            mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'Invalid JSON: ' . json_last_error_msg(),'');
-            return json_encode(array('error' => 'Invalid JSON'));
+            $error_msg = json_last_error_msg();
+            error_log("JSON decode error: " . $error_msg . " - Input length: " . strlen($json_post));
+            // Return clean error without calling mct_cs_log to avoid LOG structure
+            return json_encode(array('error' => 'Invalid JSON request'));
         }
         
         //Verify the token
         $token = $json_obj->token ?? '';
         if (empty($token)) {
             error_log("Missing token in request");
-            mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'Missing token','');
             return json_encode(array('error' => 'Missing token'));
         }
     $userid = mct_cs_validate($token, $json_obj);
