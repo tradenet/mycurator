@@ -1,0 +1,13 @@
+# Prevent redirects for cloud service API
+# This ensures POST requests are not redirected with 308
+RewriteEngine Off
+
+# Allow POST requests
+<Limit GET POST>
+    Require all granted
+</Limit>
+
+# Ensure proper content type handling
+<FilesMatch "\.(php)$">
+    Header set X-Content-Type-Options "nosniff"
+</FilesMatch>

@@ -44,6 +44,8 @@ require_once('mycurator_cloud_fcns.php');
 $request_body = file_get_contents('php://input');
 //echo $request_body; //use this to test argument calls
 //exit();
+//Log the request for debugging
+error_log("Cloud Service Request: Method=" . $_SERVER['REQUEST_METHOD'] . " Content-Type=" . ($_SERVER['CONTENT_TYPE'] ?? 'none') . " Length=" . strlen($request_body));
 //Check encoding
 if ($_SERVER['HTTP_CONTENT_ENCODING'] == 'gzip'){
     $request_body = gzuncompress($request_body);
@@ -97,6 +99,7 @@ function mct_cs_cloud_dispatch($json_post){
        return json_encode(array('postarr' => $post_arr));
     }
     if ($json_obj->type == 'GetPlan') {
+        error_log("GetPlan request for user: " . $userid);
         $arr = get_object_vars($json_obj->args);
         if (!empty($arr['blogcnt'])){
             //log this mu site usage
@@ -104,7 +107,11 @@ function mct_cs_cloud_dispatch($json_post){
             return json_encode("Logged");
         }
         $plan_arr = mct_cs_getplan($userid);
-        if (empty($plan_arr)) return json_encode($mct_cs_cloud_response);
+        if (empty($plan_arr)) {
+            error_log("GetPlan failed: Empty plan_arr for user " . $userid);
+            return json_encode($mct_cs_cloud_response);
+        }
+        error_log("GetPlan success for user: " . $userid);
         return json_encode(array('planarr' => $plan_arr));
     }
 }
