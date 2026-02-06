@@ -168,20 +168,22 @@ function mct_cs_cloud_dispatch($json_post){
             if (!empty($arr['blogcnt'])){
                 //log this mu site usage
                 error_log("MU Net: ".$token." Blogs: ".$arr['blogcnt']." ProcQ ".implode(',',$arr['procqueue']));   
-                return json_encode("Logged");
+                return json_encode(array('status' => 'Logged'));
             }
         }
         $plan_arr = mct_cs_getplan($userid);
         if (empty($plan_arr)) {
             error_log("GetPlan failed: Empty plan_arr for user " . $userid);
-            return json_encode($mct_cs_cloud_response);
+            // Return proper error structure
+            return json_encode(array('error' => 'Plan not found', 'log' => $mct_cs_cloud_response));
         }
-        error_log("GetPlan success for user: " . $userid);
-        $response = json_encode(array('planarr' => $plan_arr));
+        error_log("GetPlan success for user: " . $userid . " - Plan: " . json_encode($plan_arr));
+        $response = json_encode(array('planarr' => $plan_arr), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($response === false) {
-            error_log("GetPlan JSON encode error: " . json_last_error_msg());
-            return json_encode(array('error' => 'JSON encoding failed'));
+            error_log("GetPlan JSON encode error: " . json_last_error_msg() . " - Data: " . print_r($plan_arr, true));
+            return json_encode(array('error' => 'JSON encoding failed: ' . json_last_error_msg()));
         }
+        error_log("GetPlan JSON response: " . $response);
         return $response;
     }
     } catch (Exception $e) {
@@ -347,7 +349,7 @@ function mct_cs_getplan($id){
     // Check if database connection exists
     if (!$dblink) {
         mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'DB Connection Lost in Get Plan','');
-        return '';
+        return array(); // Return empty array instead of empty string
     }
     
     $sql = "SELECT meta_key, meta_value FROM `wp_usermeta` WHERE `user_id` = '$id' ";
@@ -356,12 +358,12 @@ function mct_cs_getplan($id){
         $error = mysqli_error($dblink);
         mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'DB Select Error on Get Plan: ' . $error,'');
         error_log("GetPlan DB Error for user $id: " . $error);
-        return '';
+        return array(); // Return empty array instead of empty string
     }
     if (mysqli_num_rows($sql_result) == 0){
         mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Meta Not Found on DB for user: ' . $id,'');
         error_log("GetPlan: No usermeta found for user $id");
-        return '';
+        return array(); // Return empty array instead of empty string
     }
     while ($row = mysqli_fetch_assoc($sql_result)){
         if ($row['meta_key'] == 'tgtinfo_plan') $plan['name'] = $row['meta_value'];
@@ -381,6 +383,7 @@ function mct_cs_getplan($id){
     if (empty($plan)) {
         mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Plan Not Found on DB for user: ' . $id,'');
         error_log("GetPlan: Plan array empty for user $id");
+        return array(); // Return empty array instead of empty string
     }
     error_log("GetPlan: Returning plan data: " . json_encode($plan));
     return $plan;
