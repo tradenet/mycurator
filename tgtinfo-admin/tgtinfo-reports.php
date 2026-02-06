@@ -512,7 +512,7 @@ function tgtinfo_user_activity(){
     global $wpdb;
     
     $vals = array('total' => 0, 'notactive' => 0, 'dropped' => 0, 'active' => 0, 
-        'highvol' => 0, 'bus' => 0, 'trial' => 0);
+        'highvol' => 0, 'bus' => 0, 'trial' => 0, 'wasactive' => 0, 'bus_t' => 0, 'pro' => 0, 'pro_t' => 0);
     $trials = 0;
     $trials_arr = array();
     //Get Totals
@@ -944,8 +944,8 @@ function tgtinfo_paid_plans(){
    $bcnt = 0;
    $fromind = 0;
    $fromtrial = 0;
-   $age_pro = array();
-   $age_bus = array();
+   $age_pro = array('cnt' => 0, 'days' => 0);
+   $age_bus = array('cnt' => 0, 'days' => 0);
    foreach ($all_users as $u) {
        //TI User?
        if (tgtinfo_istgtinfo($u->user_url)) continue;
@@ -1078,7 +1078,7 @@ function tgtinfo_paid_plans(){
         <td></td>
         <td>Age Bus <?php if ($age_bus['cnt'] > 0) { echo intval(($age_bus['days']/$age_bus['cnt'])/30); ?> Count <?php echo $age_bus['cnt']; } ?></td>
         <td></td>
-        <td>Age Tot <?php echo intval((($age_bus['days']+$age_pro['days'])/($age_bus['cnt']+$age_pro['cnt']))/30); ?></td>
+        <td>Age Tot <?php $total_cnt = $age_bus['cnt'] + $age_pro['cnt']; if ($total_cnt > 0) { echo intval((($age_bus['days']+$age_pro['days'])/$total_cnt)/30); } else { echo '0'; } ?></td>
     </tr>
     </tbody>
    </table>
