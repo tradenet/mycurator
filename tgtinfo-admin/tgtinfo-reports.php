@@ -2,6 +2,14 @@
 //Admin reports for target info marketing site
 //
 
+//Helper function to check if Gravity Forms table exists
+function tgtinfo_gf_table_exists() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'gf_entry';
+    $query = $wpdb->prepare("SHOW TABLES LIKE %s", $table_name);
+    return $wpdb->get_var($query) === $table_name;
+}
+
 //Display purchase admin menu
 function tgtinfo_createmenu() {
     
@@ -103,8 +111,10 @@ function tgtinfo_adminpage(){
                 $theuser = get_user_by('id', $tuser);
             }
             else {
-               $tuser = $wpdb->get_var('Select created_by from wp_gf_entry where transaction_id = "'.$_REQUEST['paypal'].'"'); 
-               $theuser = get_user_by('id', $tuser);
+               if (tgtinfo_gf_table_exists()) {
+                   $tuser = $wpdb->get_var('Select created_by from wp_gf_entry where transaction_id = "'.$_REQUEST['paypal'].'"'); 
+                   $theuser = get_user_by('id', $tuser);
+               }
             }
        } elseif (isset($_REQUEST['userid']) && strlen($_REQUEST['userid']) >= 1) {
            $theuser = get_user_by('id', $_REQUEST['userid']);
@@ -230,6 +240,8 @@ function tgtinfo_gfpmts_rpt($userid){
     //return a report of user pmts 
     //
      global $wpdb;
+    //Check if table exists
+    if (!tgtinfo_gf_table_exists()) return '';
     //get payments for this user
     $sql = "SELECT payment_date, source_url, payment_status, payment_amount, transaction_id"
             . " FROM wp_gf_entry WHERE created_by = ".$userid;
@@ -1003,12 +1015,14 @@ function tgtinfo_paid_plans(){
        $emailurl = admin_url()."admin.php?page=tgtinfo-admin/tgtinfo-reports.php_details&search=search&email=".$u->user_email;
        //Check if active in gf pmts
        $gf_active = 'No';
-       $sql = "SELECT payment_date, source_url, payment_status, payment_amount, transaction_id"
-            . " FROM wp_gf_entry WHERE created_by = ".$u->ID;
-        $uposts = $wpdb->get_results($sql);
-        if (!empty($uposts)) {
-            foreach ($uposts as $post){
-                if ($post->payment_status == 'Active') $gf_active = 'Yes';
+       if (tgtinfo_gf_table_exists()) {
+           $sql = "SELECT payment_date, source_url, payment_status, payment_amount, transaction_id"
+                . " FROM wp_gf_entry WHERE created_by = ".$u->ID;
+            $uposts = $wpdb->get_results($sql);
+            if (!empty($uposts)) {
+                foreach ($uposts as $post){
+                    if ($post->payment_status == 'Active') $gf_active = 'Yes';
+                }
             }
         }
         if ($gf_active == 'No' && !empty($paypal)) $gf_active = 'Manual';
