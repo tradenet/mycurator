@@ -36,6 +36,7 @@ $Acct_days = 0;
 $apikey = '';//MAILCHIMP 
 //Load export users - modified plugin
 include('tgtinfo-reports.php');
+include('tgtinfo-create-user.php');
 //include('tgtinfo-design.php');
 //include('newTI.php');
 include('MailChimp.php');
