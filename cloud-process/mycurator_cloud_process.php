@@ -35,6 +35,53 @@ define ('MCT_AI_LOG_ACTIVITY','ACTIVITY');
 define ('MCT_AI_LOG_PROCESS','PROCESS');
 define ('MCT_AI_LOG_REQUEST','REQUEST');
 
+//Helper function to unserialize data if needed
+if (!function_exists('maybe_unserialize')) {
+    function maybe_unserialize($data) {
+        if (is_serialized($data)) {
+            return @unserialize($data);
+        }
+        return $data;
+    }
+}
+
+if (!function_exists('is_serialized')) {
+    function is_serialized($data) {
+        if (!is_string($data)) {
+            return false;
+        }
+        $data = trim($data);
+        if ($data == 'N;') {
+            return true;
+        }
+        if (strlen($data) < 4) {
+            return false;
+        }
+        if ($data[1] !== ':') {
+            return false;
+        }
+        $lastc = substr($data, -1);
+        if (';' !== $lastc && '}' !== $lastc) {
+            return false;
+        }
+        $token = $data[0];
+        switch ($token) {
+            case 's':
+                if ('"' !== substr($data, -2, 1)) {
+                    return false;
+                }
+            case 'a':
+            case 'O':
+                return (bool) preg_match("/^{$token}:[0-9]+:/s", $data);
+            case 'b':
+            case 'i':
+            case 'd':
+                return (bool) preg_match("/^{$token}:[0-9.E-]+;\$/", $data);
+        }
+        return false;
+    }
+}
+
 //Get the classifier object & Support Fcns
 require_once('mycurator_cloud_init.php'); //db globals
 require_once('mycurator_cloud_classify.php');
@@ -130,7 +177,12 @@ function mct_cs_cloud_dispatch($json_post){
             return json_encode($mct_cs_cloud_response);
         }
         error_log("GetPlan success for user: " . $userid);
-        return json_encode(array('planarr' => $plan_arr));
+        $response = json_encode(array('planarr' => $plan_arr));
+        if ($response === false) {
+            error_log("GetPlan JSON encode error: " . json_last_error_msg());
+            return json_encode(array('error' => 'JSON encoding failed'));
+        }
+        return $response;
     }
     } catch (Exception $e) {
         error_log("Exception in cloud_dispatch: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
@@ -313,7 +365,15 @@ function mct_cs_getplan($id){
     }
     while ($row = mysqli_fetch_assoc($sql_result)){
         if ($row['meta_key'] == 'tgtinfo_plan') $plan['name'] = $row['meta_value'];
-        if ($row['meta_key'] == 'tgtinfo_apikey') $plan['token'] = $row['meta_value'];
+        if ($row['meta_key'] == 'tgtinfo_apikey') {
+            // Handle serialized array
+            $tokens = maybe_unserialize($row['meta_value']);
+            if (is_array($tokens)) {
+                $plan['token'] = $tokens;
+            } else {
+                $plan['token'] = $row['meta_value'];
+            }
+        }
         if ($row['meta_key'] == 'tgtinfo_max_topic') $plan['max'] = $row['meta_value'];
         if ($row['meta_key'] == 'tgtinfo_max_notebk') $plan['maxnb'] = $row['meta_value'];
         if ($row['meta_key'] == 'tgtinfo_max_source') $plan['maxsrc'] = $row['meta_value'];
@@ -322,6 +382,7 @@ function mct_cs_getplan($id){
         mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Plan Not Found on DB for user: ' . $id,'');
         error_log("GetPlan: Plan array empty for user $id");
     }
+    error_log("GetPlan: Returning plan data: " . json_encode($plan));
     return $plan;
 }
 
