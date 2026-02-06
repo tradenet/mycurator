@@ -184,14 +184,14 @@ function mct_cs_cloud_dispatch($json_post){
         $plan_arr = mct_cs_getplan($userid);
         if (empty($plan_arr)) {
             error_log("GetPlan failed: Empty plan_arr for user " . $userid);
-            // Return proper error structure
-            return json_encode(array('error' => 'Plan not found', 'log' => $mct_cs_cloud_response));
+            // Return proper error structure without LOG details
+            return json_encode(array('error' => 'Plan not found for user'));
         }
         error_log("GetPlan success for user: " . $userid . " - Plan: " . json_encode($plan_arr));
         $response = json_encode(array('planarr' => $plan_arr), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($response === false) {
             error_log("GetPlan JSON encode error: " . json_last_error_msg() . " - Data: " . print_r($plan_arr, true));
-            return json_encode(array('error' => 'JSON encoding failed: ' . json_last_error_msg()));
+            return json_encode(array('error' => 'JSON encoding failed'));
         }
         // Validate the JSON is parseable
         $test_decode = json_decode($response);
@@ -396,9 +396,19 @@ function mct_cs_getplan($id){
         if ($row['meta_key'] == 'tgtinfo_max_notebk') $plan['maxnb'] = $row['meta_value'];
         if ($row['meta_key'] == 'tgtinfo_max_source') $plan['maxsrc'] = $row['meta_value'];
     }
+    
+    // Provide defaults if plan data is missing
+    if (empty($plan['name'])) {
+        error_log("GetPlan: Missing plan name for user $id, using default");
+        $plan['name'] = 'Individual Plan';
+    }
+    if (empty($plan['max'])) $plan['max'] = '1';
+    if (empty($plan['maxnb'])) $plan['maxnb'] = '1';
+    if (empty($plan['maxsrc'])) $plan['maxsrc'] = '10';
+    
     if (empty($plan)) {
         mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Plan Not Found on DB for user: ' . $id,'');
-        error_log("GetPlan: Plan array empty for user $id");
+        error_log("GetPlan: Plan array empty for user $id after defaults");
         return array(); // Return empty array instead of empty string
     }
     error_log("GetPlan: Returning plan data: " . json_encode($plan));
