@@ -47,7 +47,7 @@ $request_body = file_get_contents('php://input');
 //Log the request for debugging
 error_log("Cloud Service Request: Method=" . $_SERVER['REQUEST_METHOD'] . " Content-Type=" . ($_SERVER['CONTENT_TYPE'] ?? 'none') . " Length=" . strlen($request_body));
 //Check encoding
-if ($_SERVER['HTTP_CONTENT_ENCODING'] == 'gzip'){
+if (isset($_SERVER['HTTP_CONTENT_ENCODING']) && $_SERVER['HTTP_CONTENT_ENCODING'] == 'gzip'){
     $request_body = gzuncompress($request_body);
 }
 $response = mct_cs_cloud_dispatch($request_body);
@@ -62,6 +62,7 @@ $response = mct_cs_cloud_dispatch($request_body);
      header("Content-Type: application/json");  
      header("Content-Length: " . strlen($response));
  }
+ error_log("Cloud Service Response Length: " . strlen($response));
  echo $response;
  exit();
 
@@ -69,10 +70,24 @@ function mct_cs_cloud_dispatch($json_post){
 //First we verify the token as valid, then    
 //This function dispatches the cloud processing based on the type of service requested
     global $mct_cs_cloud_response, $gzip_ok, $tm, $timing;
-    $json_obj = json_decode($json_post);  //Decode the object
     
-    //Verify the token
-    $token = $json_obj->token;
+    try {
+        $json_obj = json_decode($json_post);  //Decode the object
+        
+        // Check if JSON decode was successful
+        if ($json_obj === null && json_last_error() !== JSON_ERROR_NONE) {
+            error_log("JSON decode error: " . json_last_error_msg());
+            mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'Invalid JSON: ' . json_last_error_msg(),'');
+            return json_encode(array('error' => 'Invalid JSON'));
+        }
+        
+        //Verify the token
+        $token = $json_obj->token ?? '';
+        if (empty($token)) {
+            error_log("Missing token in request");
+            mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'Missing token','');
+            return json_encode(array('error' => 'Missing token'));
+        }
     $userid = mct_cs_validate($token, $json_obj);
     if (!$userid) {
         return json_encode($mct_cs_cloud_response);
@@ -113,6 +128,11 @@ function mct_cs_cloud_dispatch($json_post){
         }
         error_log("GetPlan success for user: " . $userid);
         return json_encode(array('planarr' => $plan_arr));
+    }
+    } catch (Exception $e) {
+        error_log("Exception in cloud_dispatch: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'Exception: ' . $e->getMessage(),'');
+        return json_encode(array('error' => 'Internal server error'));
     }
 }
 
@@ -269,14 +289,23 @@ function mct_cs_getplan($id){
     global $dblink;
     $plan = array();
     
+    // Check if database connection exists
+    if (!$dblink) {
+        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'DB Connection Lost in Get Plan','');
+        return '';
+    }
+    
     $sql = "SELECT meta_key, meta_value FROM `wp_usermeta` WHERE `user_id` = '$id' ";
     $sql_result = mysqli_query($dblink, $sql);
     if (!$sql_result){
-        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'DB Select Error on Get Plan','');
+        $error = mysqli_error($dblink);
+        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'DB Select Error on Get Plan: ' . $error,'');
+        error_log("GetPlan DB Error for user $id: " . $error);
         return '';
     }
     if (mysqli_num_rows($sql_result) == 0){
-        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Meta Not Found on DB','');
+        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Meta Not Found on DB for user: ' . $id,'');
+        error_log("GetPlan: No usermeta found for user $id");
         return '';
     }
     while ($row = mysqli_fetch_assoc($sql_result)){
@@ -286,7 +315,10 @@ function mct_cs_getplan($id){
         if ($row['meta_key'] == 'tgtinfo_max_notebk') $plan['maxnb'] = $row['meta_value'];
         if ($row['meta_key'] == 'tgtinfo_max_source') $plan['maxsrc'] = $row['meta_value'];
     }
-    if (empty($plan)) mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Plan Not Found on DB','');
+    if (empty($plan)) {
+        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'User Plan Not Found on DB for user: ' . $id,'');
+        error_log("GetPlan: Plan array empty for user $id");
+    }
     return $plan;
 }
 
