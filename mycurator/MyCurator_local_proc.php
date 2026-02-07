@@ -907,9 +907,25 @@ function mct_ai_post_entry($topic, $post_arr, $page){
     //Training or not relevant but active
     $post_msg = '';
     if ($topic['topic_status'] == 'Training'  || $rel_not_good){
+        
+        error_log("Attempting to create training post for topic: {$topic['topic_name']}");
+        error_log("Post title: " . $post_arr['title']);
+        error_log("Topic slug: $topic_slug, Class slug: $class_slug");
 
         $details['post_type'] = 'target_ai'; //post as a target
         $post_id = wp_insert_post($details);
+        
+        // Check if post was created successfully
+        if (!$post_id || is_wp_error($post_id)) {
+            $error_msg = is_wp_error($post_id) ? $post_id->get_error_message() : 'Unknown error - wp_insert_post returned 0 or false';
+            mct_ai_log($topic['topic_name'], MCT_AI_LOG_ERROR, 'Failed to create training post: ' . $error_msg, $post_arr['current_link'], $post_arr['source']);
+            error_log("Failed to create training post for topic '{$topic['topic_name']}': $error_msg");
+            error_log("Post details: " . print_r($details, true));
+            return false;
+        }
+        
+        error_log("Training post created successfully with ID: $post_id");
+        
         if (!empty($post_arr['tags'])){
             update_post_meta($post_id,'mct_ai_tag_search2',$post_arr['tags']); //put keywords found in meta
         }
@@ -946,6 +962,16 @@ function mct_ai_post_entry($topic, $post_arr, $page){
         $details['ping_status'] = get_option('default_ping_status');
         $details['post_status'] = 'draft';  //Set to draft then publish in case they have Publicize
         $post_id = wp_insert_post($details);
+        
+        // Check if post was created successfully
+        if (!$post_id || is_wp_error($post_id)) {
+            $error_msg = is_wp_error($post_id) ? $post_id->get_error_message() : 'Unknown error - wp_insert_post returned 0 or false';
+            mct_ai_log($topic['topic_name'], MCT_AI_LOG_ERROR, 'Failed to create live post: ' . $error_msg, $post_arr['current_link'], $post_arr['source']);
+            error_log("Failed to create live post for topic '{$topic['topic_name']}': $error_msg");
+            error_log("Post details: " . print_r($details, true));
+            return false;
+        }
+        
         wp_publish_post($post_id);
         $post_msg = "Live";
     }
