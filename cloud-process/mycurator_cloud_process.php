@@ -157,10 +157,20 @@ function mct_cs_cloud_dispatch($json_post){
     if (!empty($json_obj->gzip) && $json_obj->gzip == true) $gzip_ok = true;
     
     if ($json_obj->type == 'Topic') {
-        
+        error_log("Topic request for user: " . $userid . " topic_id: " . ($json_obj->args->topic_id ?? 'unknown'));
         $ok = mct_cs_set_topic($json_obj);
-        if ($ok) return json_encode(array('LOG' => 'OK'));
-        else return json_encode($mct_cs_cloud_response);
+        if ($ok) {
+            error_log("Topic saved successfully");
+            return json_encode(array('LOG' => 'OK'));
+        }
+        else {
+            error_log("Topic save failed - returning error");
+            // Return clean error response
+            if (!empty($mct_cs_cloud_response['LOG'])) {
+                return json_encode($mct_cs_cloud_response);
+            }
+            return json_encode(array('error' => 'Failed to save topic'));
+        }
     }
     if ($json_obj->type == 'Classify') {
        $topic = mct_cs_get_topic($json_obj); 
@@ -299,11 +309,14 @@ function mct_cs_set_topic($jsonobj){
     $sql = "SELECT `topic_id` FROM `wp_cs_topic` WHERE `token` = '$token' AND `topic_id` = $topicid";
     $sql_result = mysqli_query($dblink, $sql);
     if (!$sql_result){
-        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'DB Select Error on Find Topic','');
+        $err = mysqli_error($dblink);
+        error_log("DB Select Error on Find Topic: " . $err);
+        mct_cs_log('CloudService',MCT_AI_LOG_ERROR, 'DB Select Error on Find Topic: ' . $err,'');
         return false;
     }
     if (!mysqli_num_rows($sql_result)){
         //Not found so do an insert
+        error_log("Topic not found, inserting new topic $topicid for token $token");
         $sql = "INSERT INTO `wp_cs_topic` (referer, token";  //topic_id,topic_name,topic_slug,topic_status,topic_type,topic_search_1,topic_search_2,";
         $valstr = "VALUES ('$referer', '$token'";
         foreach ($topic as $fld=>$vals){
@@ -314,11 +327,14 @@ function mct_cs_set_topic($jsonobj){
         $sql_result = mysqli_query($dblink, $sql);
         if (!$sql_result){
             $err = mysqli_error($dblink);
+            error_log("DB Error on Insert Topic: $err - SQL: " . substr($sql, 0, 200));
             mct_cs_log('CloudService',MCT_AI_LOG_ERROR, "DB Error on Insert Topic: $err",'');
             return false;
         }
+        error_log("Topic inserted successfully");
     } else {
         //Do an update
+        error_log("Topic found, updating topic $topicid for token $token");
         $sql = "UPDATE `wp_cs_topic` SET `referer` = '$referer', `last_update` = now(), ";
         foreach ($topic as $fld=>$vals){
             if ($fld == 'topic_id') continue;  //part of where clause
@@ -329,9 +345,11 @@ function mct_cs_set_topic($jsonobj){
         $sql_result = mysqli_query($dblink, $sql);
         if (!$sql_result){
             $err = mysqli_error($dblink);
+            error_log("DB Error on Update Topic: $err - SQL: " . substr($sql, 0, 200));
             mct_cs_log('CloudService',MCT_AI_LOG_ERROR, "DB Error on Update Topic: $err",'');
             return false;
         }
+        error_log("Topic updated successfully");
     }
     
     return true;
