@@ -28,7 +28,7 @@ $gzip_ok = false;  //pre-set to false for early versions of MyCurator
 //This global holds the DB connection
 global $dblink;
 //Where did we come from
-$referer = $_SERVER['HTTP_REFERER'];
+$referer = isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '';
 //Constants for the log
 define ('MCT_AI_LOG_ERROR','ERROR');
 define ('MCT_AI_LOG_ACTIVITY','ACTIVITY');
@@ -175,7 +175,7 @@ function mct_cs_cloud_dispatch($json_post){
     if ($json_obj->type == 'Classify') {
        $topic = mct_cs_get_topic($json_obj); 
        if (empty($topic)) return json_encode($mct_cs_cloud_response);
-       $post_arr = mct_cs_classify($topic, $json_obj); 
+       $post_arr = mct_cs_classify($topic, $json_obj, $userid); 
        if (empty($post_arr)) return json_encode($mct_cs_cloud_response);
        $tm['c'] = microtime(true);
        if ($timing) {
@@ -437,6 +437,37 @@ function mct_cs_getplan($id){
     return $plan;
 }
 
+function mct_cs_get_user_diffbot_key($userid){
+    //Get the user's DiffBot API key from the database
+    //This is optional - returns empty string if not found
+    //The system will fall back to admin-configured tokens if this returns empty
+    global $dblink, $token_ind;
+    
+    if (!$dblink) {
+        return '';
+    }
+    
+    $sql = "SELECT meta_value FROM `wp_usermeta` WHERE `user_id` = '$userid' AND `meta_key` = 'tgtinfo_apikey'";
+    $sql_result = mysqli_query($dblink, $sql);
+    if (!$sql_result || mysqli_num_rows($sql_result) == 0){
+        // Not an error - user-specific tokens are optional
+        return '';
+    }
+    
+    $row = mysqli_fetch_assoc($sql_result);
+    $token = $row['meta_value'];
+    
+    // Return the token (user typically has one DiffBot token)
+    // Note: Legacy serialized arrays are still supported for backward compatibility
+    $unserialized = maybe_unserialize($token);
+    if (is_array($unserialized)) {
+        // Legacy format: return first available token
+        return reset($unserialized);
+    }
+    
+    return $token;
+}
+
 function mct_cs_log($topic, $type, $msg, $url){
     global $mct_cs_cloud_response;
     
@@ -450,7 +481,7 @@ function mct_cs_log($topic, $type, $msg, $url){
     if ($type == MCT_AI_LOG_ERROR && stripos($msg,"No relevance database") === false) error_log($msg);
 }
 
-function mct_cs_classify($topic, $jsonobj){ 
+function mct_cs_classify($topic, $jsonobj, $userid){ 
     global $dblink, $mct_cs_cloud_response, $tm;
     //$topic is an array with each field from the topics file
     //jsonobj holds the page and the current_link
@@ -475,7 +506,7 @@ function mct_cs_classify($topic, $jsonobj){
     $tm['v'] = microtime(true);
     if ($page == "Not Here"){
         //Need to get the page from diffbot
-        $page = mct_ai_getpage($ilink, $topic, $jsonobj->rqst, $jsonobj->token);
+        $page = mct_ai_getpage($ilink, $topic, $jsonobj->rqst, $jsonobj->token, $userid);
         $post_arr['page'] = $page;
         $mct_cs_cloud_response['postarr'] = $post_arr;  //Load in response in case we don't post this entry
         if (empty($page)) {
@@ -735,7 +766,7 @@ function mct_ai_filterphrase($phrase, $words, $type){
  }
 
 
-function mct_ai_getpage($url, $topic, $rqst, $token){
+function mct_ai_getpage($url, $topic, $rqst, $token, $userid){
     //Get the page translated from diffbot and translate
     global $token_ind, $cache, $dblink;
     
@@ -778,7 +809,7 @@ function mct_ai_getpage($url, $topic, $rqst, $token){
         }
         if ($sql_result && mysqli_num_rows($sql_result) == 0){
             $db_key = intval($token_ind);
-            $sql = "INSERT INTO wp_cs_requests (rq_url, rq_dbkey) VALUES ('$cache_url', $db_key)";
+            $sql = "INSERT INTO wp_cs_requests (rq_url, rq_dbkey, rq_userid) VALUES ('$cache_url', $db_key, $userid)";
             $sql_result = mysqli_query($dblink, $sql);
             if (!$sql_result) {
                 mct_cs_log($topic['topic_name'],MCT_AI_LOG_ERROR, 'DB Insert Error Requesting Page '.mysqli_error($dblink),$url);
@@ -797,7 +828,17 @@ function mct_ai_getpage($url, $topic, $rqst, $token){
     }
     $sql = "UPDATE wp_cs_validate SET `classify_calls` = `classify_calls` + 1 WHERE `token` = '$token'";
     $sql_result = mysqli_query($dblink, $sql);
-    $page = mct_ai_call_diffbot($url, $topic);
+    // Get user's DiffBot API key (optional - for user-specific tokens)
+    // If empty, mct_ai_call_diffbot will use admin-configured tokens
+    $dbot_key = mct_cs_get_user_diffbot_key($userid);
+    $page = mct_ai_call_diffbot($url, $topic, $dbot_key);
+    
+    // If user token failed and we have one configured, try with admin token
+    if (empty($page) && !empty($dbot_key)) {
+        mct_cs_log($topic['topic_name'], MCT_AI_LOG_ACTIVITY, 'User token failed, retrying with admin token', $url);
+        $page = mct_ai_call_diffbot($url, $topic, ''); // Empty token = use admin token
+    }
+    
     error_log("Direct Classify");
     //Update cache with page if on
     if ($cache && !empty($page)) {

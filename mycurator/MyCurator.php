@@ -1803,6 +1803,11 @@ function mct_ai_optionpage() {
                     <td><input name="ai_feed_cleaner" type="text" id="ai_feed_cleaner" size="100" value="<?php echo($cur_options['ai_feed_cleaner']); ?>"  /></td>    
                 </tr>
                 <tr>
+                    <th scope="row">Cloud Service URL</th>
+                    <td><input name="ai_cloud_url" type="text" id="ai_cloud_url" size="100" value="<?php echo esc_attr($cur_options['ai_cloud_url']); ?>"  />
+                        <span>&nbsp;<em>Full URL for the cloud GetIt endpoint (e.g. https://cloud.example.com/getit)</em></span></td>    
+                </tr>
+                <tr>
                     <th scope="row">Delete Readable Page when Curated Article Published?</th>
                     <td><input name="ai_del_slpages" type="checkbox" id="ai_del_slpages" value="1" <?php checked('1', $cur_options['ai_del_slpages']); ?> onclick="mct_ai_slpage_box()" /></td>    
                 </tr>
@@ -1898,6 +1903,7 @@ function mct_ai_setoptions($default) {
             'ai_log_days' => ($default) ? 7 : absint($_POST['ai_log_days']),
             'ai_on' => ($default) ? TRUE : ($_POST['ai_on'] == FALSE ? FALSE : TRUE),
             'ai_cloud_token' => ($default) ? '' : $mct_ai_optarray['ai_cloud_token'],
+            'ai_cloud_url' => ($default) ? '' : trim(sanitize_text_field((isset($_POST['ai_cloud_url'])?$_POST['ai_cloud_url']:''))),
             'ai_train_days' => ($default) ? 7 : absint($_POST['ai_train_days']),
             'ai_lookback_days' => ($default) ? 30 : absint($_POST['ai_lookback_days']),
             'ai_short_linkpg' => ($default) ? 0 : absint((isset($_POST['ai_short_linkpg']) ? $_POST['ai_short_linkpg'] : 0)),
@@ -3515,5 +3521,17 @@ $stopwords = array('a', 'about', 'above', 'above', 'across', 'after', 'afterward
 $threeletter = array('new');
 
 
+// Admin notice: prompt to set Cloud Service URL when not configured
+function mct_ai_cloud_url_admin_notice(){
+    if (!current_user_can('manage_options')) return;
+    $opts = get_option('mct_ai_options');
+    if (!empty($opts) && !empty($opts['ai_cloud_url'])) return; //configured
+    $settings_url = admin_url('admin.php?page=MyCurator.php');
+    echo '<div class="notice notice-warning is-dismissible">';
+    echo '<p><strong>MyCurator:</strong> Cloud Service URL not configured. ';
+    echo 'Set it on the <a href="' . esc_url($settings_url) . '">MyCurator Options</a> page to enable cloud GetIt features.</p>';
+    echo '</div>';
+}
+add_action('admin_notices','mct_ai_cloud_url_admin_notice');
 
 ?>

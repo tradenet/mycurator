@@ -10,6 +10,14 @@ function mct_ai_get_words($page, $dup=true){
     //if dup is false, it won't remove duplicates
     
     global $stopwords, $threeletter;
+    
+    // Initialize arrays if not set (safety check)
+    if (!is_array($stopwords)) {
+        $stopwords = array();
+    }
+    if (!is_array($threeletter)) {
+        $threeletter = array();
+    }
 
     //Is this a formated page from DiffBot?
     if (strpos($page, 'savelink-article')=== false){
@@ -83,6 +91,14 @@ function mct_ai_utf_words($page, $dup=true){
     //Only strips punctuation and is UTF-8 aware
     
     global $stopwords, $threeletter;
+    
+    // Initialize arrays if not set (safety check)
+    if (!is_array($stopwords)) {
+        $stopwords = array();
+    }
+    if (!is_array($threeletter)) {
+        $threeletter = array();
+    }
 
     //Is this a formated page from DiffBot?
     if (strpos($page, 'savelink-article')=== false){

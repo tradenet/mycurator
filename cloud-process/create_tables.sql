@@ -84,6 +84,7 @@ CREATE TABLE `wp_cs_requests` (
   `rq_update` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `rq_err_try` int DEFAULT NULL,
   `rq_dbkey` int DEFAULT NULL,
+  `rq_userid` int DEFAULT NULL,
   PRIMARY KEY (`rq_id`),
   KEY `rq_url` (`rq_url`(255))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

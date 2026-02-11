@@ -10,7 +10,16 @@ if (isset($_GET['logfile'])){
     $logfile = filter_var ( $_GET['logfile'], FILTER_SANITIZE_STRING);
 }
 echo '<p>'.$logfile.'</p>';
-$cnts = array();
+
+// Initialize all arrays and counters
+$cnts = array(
+    'total' => 0, 'db' => 0, 'dbi' => 0, 'token' => 0, 'end' => 0, 
+    'product' => 0, 'curl' => 0, 'timeout' => 0, 'differr' => 0, 
+    'dbtime' => 0, 'dbdown' => 0, 'kill' => 0, 'render' => 0, 
+    'ptext' => 0, 'loaded' => 0, 'ai' => 0, 'encode' => 0, 
+    'utf8' => 0, 'lcl' => 0, 'dchit' => 0, 'rgot' => 0, 
+    'rinsert' => 0, 'rexist' => 0, 'dclass' => 0
+);
 $ips = array();
 $vers = array();
 $mublogs = array();
@@ -20,6 +29,11 @@ $totln = 0;
 $rqcnt = $rqmax = $rqtot = 0;
 $file = $logfile; 
 $fp = fopen($file, "r");
+if ($fp === false) {
+    echo "<p style='color:red;'>ERROR: Could not open log file: $logfile</p>";
+    echo "<p>Please check the file path and permissions.</p>";
+    exit;
+}
 while (($line = fgets($fp)) !== false) {
     $cnts['total'] += 1;
     if ($pos = strpos($line,'DB ')) { 
@@ -86,26 +100,31 @@ while (($line = fgets($fp)) !== false) {
         }
     }
 }
+fclose($fp);
+
 echo 'Total Lines: '.strval($cnts['total'])."<br /><br />";
 if (strpos($file,'php_errorlog') !== false) {
     echo '==================<br /><br />';
     $totln = $cnts['lcl']+$cnts['dchit']+$cnts['rgot']+$cnts['rinsert']+$cnts['dclass']+$cnts['rexist'];
     echo 'Total Calls: '.strval($totln)."<br /><br />";
-    echo 'Requests: '.strval($cnts['rgot']+$cnts['rinsert']+$cnts['rexist']).' '.number_format(strval($cnts['rgot']+$cnts['rinsert']+$cnts['rexist'])/$totln,2)."<br /><br />";
+    echo 'Requests: '.strval($cnts['rgot']+$cnts['rinsert']+$cnts['rexist']).' '.($totln > 0 ? number_format(($cnts['rgot']+$cnts['rinsert']+$cnts['rexist'])/$totln,2) : '0')."<br /><br />";
     $totln = $totln - $cnts['rinsert'];
     echo 'Request In (dbl cnt): '.strval($cnts['rinsert'])."<br /><br />";
     echo 'New Total Calls: '.strval($totln)."<br /><br />";
-    echo 'Local Cache Classify: '.strval($cnts['lcl']).' '.number_format(strval($cnts['lcl']/$totln),2)."<br /><br />";
-    echo 'Direct Calls: '.strval($cnts['dchit']+$cnts['dclass']).' '.number_format(strval(($cnts['dchit']+$cnts['dclass'])/$totln),2)."<br /><br />";
-    echo 'Direct Cache Hits: '.strval($cnts['dchit']).' '.number_format(strval($cnts['dchit'])/strval(($cnts['dchit']+$cnts['dclass'])),2)."<br /><br />";
-    echo 'Direct Error: '.number_format(strval(($cnts['differr']+$cnts['render'])/($cnts['dclass'])),2)."<br /><br />";
+    echo 'Local Cache Classify: '.strval($cnts['lcl']).' '.($totln > 0 ? number_format($cnts['lcl']/$totln,2) : '0')."<br /><br />";
+    echo 'Direct Calls: '.strval($cnts['dchit']+$cnts['dclass']).' '.($totln > 0 ? number_format(($cnts['dchit']+$cnts['dclass'])/$totln,2) : '0')."<br /><br />";
+    $direct_total = $cnts['dchit']+$cnts['dclass'];
+    echo 'Direct Cache Hits: '.strval($cnts['dchit']).' '.($direct_total > 0 ? number_format($cnts['dchit']/$direct_total,2) : '0')."<br /><br />";
+    echo 'Direct Error: '.($cnts['dclass'] > 0 ? number_format(($cnts['differr']+$cnts['render'])/$cnts['dclass'],2) : '0')."<br /><br />";
     echo 'Requests Extra Out & Exist: '.strval($cnts['rgot']-$cnts['rinsert']).' '.strval($cnts['rexist'])."<br /><br />";
-    echo 'Request Cache & Error: '.number_format(strval((($cnts['rgot']-$cnts['rinsert'])+$cnts['rexist'])/$totln),2).' '.number_format(strval($cnts['ptext']/$cnts['rinsert']),2)."<br /><br />";
-    echo 'Diffbot Classify: '.strval($cnts['rinsert']+$cnts['dclass']).' '.number_format(strval(($cnts['rinsert']+$cnts['dclass'])/$totln),2)."<br /><br />";                 
+    $req_cache_total = ($cnts['rgot']-$cnts['rinsert'])+$cnts['rexist'];
+    echo 'Request Cache & Error: '.($totln > 0 ? number_format($req_cache_total/$totln,2) : '0').' '.($cnts['rinsert'] > 0 ? number_format($cnts['ptext']/$cnts['rinsert'],2) : '0')."<br /><br />";
+    echo 'Diffbot Classify: '.strval($cnts['rinsert']+$cnts['dclass']).' '.($totln > 0 ? number_format(($cnts['rinsert']+$cnts['dclass'])/$totln,2) : '0')."<br /><br />";                 
     echo '==================<br /><br />';
 } else {
-    echo 'Page Loaded & Errors: '.strval($cnts['loaded']).' '.number_format(strval(($cnts['differr']+$cnts['curl']+$cnts['render'])/$cnts['loaded']),2)."<br /><br />";
-    echo 'Rq Max & Avg: '.$rqmax.' '.number_format($rqtot/$rqcnt,0)."<br /><br />";    
+    $loaded_total = $cnts['differr']+$cnts['curl']+$cnts['render'];
+    echo 'Page Loaded & Errors: '.strval($cnts['loaded']).' '.($cnts['loaded'] > 0 ? number_format($loaded_total/$cnts['loaded'],2) : '0')."<br /><br />";
+    echo 'Rq Max & Avg: '.$rqmax.' '.($rqcnt > 0 ? number_format($rqtot/$rqcnt,0) : '0')."<br /><br />";    
 }   
 echo 'DB Errors: '.strval($cnts['db'])."<br /><br />";
 echo 'DB Insert Error Into Cache: '.strval($cnts['dbi'])."<br /><br />";
@@ -131,6 +150,9 @@ echo 'UTF-8 Option: '.strval($cnts['utf8'])."<br /><br />";
 echo 'Versions<br />';
 //Get versions
 foreach ($ips as $token => $ver) {
+    if (!isset($vers[$ver])) {
+        $vers[$ver] = 0;
+    }
     $vers[$ver] += 1;
 }
 foreach ($vers as $ver => $cnt) {

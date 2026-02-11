@@ -25,6 +25,90 @@ $pid = getmypid();
 //
 //Get limit variables
 if (empty($argv[1]) || empty($argv[2]) || empty($argv[3])) {
+    exit(); //nothing passed in so get out
+}
+
+//Helper function for page worker to get user's DiffBot API key
+function mct_cs_get_user_diffbot_key($userid){
+    //Get the user's DiffBot API key from the database
+    //This is optional - returns empty string if not found
+    //The system will fall back to admin-configured tokens if this returns empty
+    global $dblink, $token_ind;
+    
+    if (!$dblink) {
+        return '';
+    }
+    
+    $sql = "SELECT meta_value FROM `wp_usermeta` WHERE `user_id` = '$userid' AND `meta_key` = 'tgtinfo_apikey'";
+    $sql_result = mysqli_query($dblink, $sql);
+    if (!$sql_result || mysqli_num_rows($sql_result) == 0){
+        // Not an error - user-specific tokens are optional
+        return '';
+    }
+    
+    $row = mysqli_fetch_assoc($sql_result);
+    $token = $row['meta_value'];
+    
+    // Return the token (user typically has one DiffBot token)
+    // Note: Legacy serialized arrays are still supported for backward compatibility
+    $unserialized = maybe_unserialize($token);
+    if (is_array($unserialized)) {
+        // Legacy format: return first available token
+        return reset($unserialized);
+    }
+    
+    return $token;
+}
+
+//Helper function to unserialize data if needed
+if (!function_exists('maybe_unserialize')) {
+    function maybe_unserialize($data) {
+        if (is_serialized($data)) {
+            return @unserialize($data);
+        }
+        return $data;
+    }
+}
+
+if (!function_exists('is_serialized')) {
+    function is_serialized($data) {
+        if (!is_string($data)) {
+            return false;
+        }
+        $data = trim($data);
+        if ($data == 'N;') {
+            return true;
+        }
+        if (strlen($data) < 4) {
+            return false;
+        }
+        if ($data[1] !== ':') {
+            return false;
+        }
+        $lastc = substr($data, -1);
+        if (';' !== $lastc && '}' !== $lastc) {
+            return false;
+        }
+        $token = $data[0];
+        switch ($token) {
+            case 's':
+                if ('"' !== substr($data, -2, 1)) {
+                    return false;
+                }
+            case 'a':
+            case 'O':
+                return (bool) preg_match("/^{$token}:[0-9]+:/s", $data);
+            case 'b':
+            case 'i':
+            case 'd':
+                return (bool) preg_match("/^{$token}:[0-9.E-]+;\$/", $data);
+        }
+        return false;
+    }
+}
+
+//Get limit variables
+if (empty($argv[1]) || empty($argv[2]) || empty($argv[3])) {
     mct_cs_log("Page Sub Worker $pid",MCT_AI_LOG_PROCESS,"Missing Input Args",var_dump($argv));
     exit();
 }
@@ -63,8 +147,22 @@ while ($row = mysqli_fetch_assoc($sql_result)){
     } else {
         if ($row['rq_errcnt'] >= MAX_ERROR) continue; //quit trying to process 
         //Now get page from diffbot
-        $token_ind = $row['rq_dbkey']; //which diffbot key to use
-        $page = mct_ai_call_diffbot($row['rq_url'], array('topic_name' => "Page Sub Worker $pid"));
+        $token_ind = $row['rq_dbkey']; //which diffbot key to use (0=business, 1=individual)
+        $userid = isset($row['rq_userid']) ? $row['rq_userid'] : 0;
+        // Get user's DiffBot API key (optional - for user-specific tokens)
+        // If empty, mct_ai_call_diffbot will use admin-configured tokens
+        $dbot_key = '';
+        if ($userid > 0) {
+            $dbot_key = mct_cs_get_user_diffbot_key($userid);
+        }
+        $page = mct_ai_call_diffbot($row['rq_url'], array('topic_name' => "Page Sub Worker $pid"), $dbot_key);
+        
+        // If user token failed and we have one configured, try with admin token
+        if (empty($page) && !empty($dbot_key)) {
+            mct_cs_log("Page Sub Worker $pid", MCT_AI_LOG_ACTIVITY, 'User token failed, retrying with admin token', $row['rq_url']);
+            $page = mct_ai_call_diffbot($row['rq_url'], array('topic_name' => "Page Sub Worker $pid"), ''); // Empty token = use admin token
+        }
+        
         if (empty($page)) {
             $ecnt = $row['rq_errcnt'] + 1;
             $sql = "UPDATE wp_cs_requests SET rq_errcnt = $ecnt WHERE rq_id = ".$row['rq_id'];

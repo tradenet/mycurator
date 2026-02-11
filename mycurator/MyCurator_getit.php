@@ -77,6 +77,34 @@ function press_it() {
             if (!empty($_POST['notebook'])) $post_arr['notebook'] = '1';
             $page = 'Not Here';
             $postit = mct_ai_cloudclassify($page, $topic, $post_arr);
+            //If cloud failed, try local fallback to get page content
+            if (!$postit && empty($_POST['notebook'])) {
+                if (function_exists('mct_ai_log')) {
+                    mct_ai_log('GetIt', MCT_AI_LOG_ACTIVITY, 'Cloud classify failed, attempting local fallback', $url);
+                }
+                if (function_exists('mct_ai_local_getit_excerpt')) {
+                    $local_excerpt = mct_ai_local_getit_excerpt($url);
+                    if ($local_excerpt) {
+                        //Build a minimal page with the excerpt in DiffBot format
+                        $page = '<html><head><title>' . esc_html($title) . '</title>';
+                        $page .= '<link rel="stylesheet" type="text/css" href="mct_ai_local_style" /></head>';
+                        $page .= '<body><div id="savelink-article">';
+                        $page .= '<h1 id="sl-title">' . esc_html($title) . '</h1>';
+                        $page .= '<div id="source-url"><a href="' . esc_url($url) . '">' . esc_html(parse_url($url, PHP_URL_HOST)) . '</a></div>';
+                        $page .= '<span class="mct-ai-article-content">' . $local_excerpt . '</span>';
+                        $page .= '</div></body></html>';
+                        $post_arr['page'] = $page;
+                        $postit = true; //Enable posting with local content
+                        if (function_exists('mct_ai_log')) {
+                            mct_ai_log('GetIt', MCT_AI_LOG_ACTIVITY, 'Local fallback succeeded', $url);
+                        }
+                    } else {
+                        if (function_exists('mct_ai_log')) {
+                            mct_ai_log('GetIt', MCT_AI_LOG_ERROR, 'Local fallback failed - could not fetch page', $url);
+                        }
+                    }
+                }
+            }
             if ($postit) {
                 //update the style sheet with the local copy
                 $page = $post_arr['page'];
@@ -127,7 +155,7 @@ function press_it() {
         }
         if (!$nbid) return false;
     } else {
-        //Set up link String
+        //Set up link String as bare minimum
         $content = mct_ai_build_link($url, $title);
     }
     $details = array(

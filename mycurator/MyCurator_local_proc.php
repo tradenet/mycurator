@@ -68,6 +68,39 @@ function mct_ai_process_site($cron, $names=array()){
     $proc_id = 0;
 }
 
+function mct_ai_local_getit_excerpt($url){
+    //Attempt a local fetch and create an excerpt when cloud GetIt fails
+    global $mct_ai_optarray;
+    $excerpt_length = !empty($mct_ai_optarray['ai_excerpt']) ? $mct_ai_optarray['ai_excerpt'] : 50;
+    //Try WP HTTP first
+    $body = '';
+    $res = wp_remote_get($url, array('timeout' => 10));
+    if (is_wp_error($res) || empty($res) || wp_remote_retrieve_response_code($res) != 200) {
+        //Try curl fallback
+        if (function_exists('mct_ai_curl_get_file_contents')) {
+            $body = mct_ai_curl_get_file_contents($url);
+        }
+    } else {
+        $body = wp_remote_retrieve_body($res);
+    }
+    if (empty($body)) return false;
+    //Strip scripts/styles and tags
+    $body = preg_replace('@<script[^>]*?>.*?</script>@si','',$body);
+    $body = preg_replace('@<style[^>]*?>.*?</style>@si','',$body);
+    //Remove HTML tags and collapse whitespace
+    $text = wp_strip_all_tags($body);
+    $text = preg_replace('/\s+/',' ',$text);
+    $text = trim($text);
+    if (empty($text)) return false;
+    $words = explode(' ',$text, $excerpt_length + 1);
+    if (count($words) > $excerpt_length) {
+        array_pop($words);
+        array_push($words,'[...]');
+    }
+    $excerpt = implode(' ',$words);
+    return mct_ai_setexcerpt($excerpt);
+}
+
 function mct_ai_process_topic($topic){ 
     //Process all feeds and items within a topic
     //$topic is an array with each field from the topics file
@@ -611,11 +644,27 @@ function mct_ai_cloudtopic($topic){
     $response = mct_ai_callcloud('Topic', $topic, $topic);
     
     //response is json decoded
-    if ($response == NULL) return false; //error already logged
-    if ($response->LOG == 'OK') return true;
-    $log = get_object_vars($response->LOG);
-    //Log the error and return false
-    mct_ai_log($log['logs_topic'], $log['logs_type'], $log['logs_msg'], $log['logs_url']);
+    if ($response == NULL || $response === false) return false; //error already logged
+    
+    // Check for error response format (newer error handling)
+    if (isset($response->error)) {
+        mct_ai_log($topic['topic_name'], MCT_AI_LOG_ERROR, 'Cloud Error: '.$response->error, '');
+        return false;
+    }
+    
+    // Check for success
+    if (isset($response->LOG) && $response->LOG == 'OK') return true;
+    
+    // Check for LOG error format (legacy error handling)
+    if (isset($response->LOG) && is_object($response->LOG)) {
+        $log = get_object_vars($response->LOG);
+        //Log the error and return false
+        mct_ai_log($log['logs_topic'], $log['logs_type'], $log['logs_msg'], $log['logs_url']);
+        return false;
+    }
+    
+    // Unexpected response format
+    mct_ai_log($topic['topic_name'], MCT_AI_LOG_ERROR, 'Unexpected cloud response format', '');
     return false;
 }
 
@@ -627,13 +676,24 @@ function mct_ai_cloudclassify($page,$topic,&$post_arr){
     $post_arr['page'] = $page;
     
     $response = mct_ai_callcloud('Classify', $topic, $post_arr);
-    if ($response == NULL) return false; //error already logged
+    if ($response == NULL || $response === false) return false; //error already logged
+    
+    // Check for error response format (newer error handling)
+    if (isset($response->error)) {
+        mct_ai_log($topic['topic_name'], MCT_AI_LOG_ERROR, 'Cloud Error: '.$response->error, $post_arr['current_link']);
+        return false;
+    }
+    
     if (!empty($response->postarr)) $post_arr = get_object_vars($response->postarr);  //may have page even if error
+    
     if (!empty($response->LOG)) {
-        $log = get_object_vars($response->LOG);
-        //Log the error or request and return false
-        mct_ai_log($log['logs_topic'], $log['logs_type'], $log['logs_msg'], $log['logs_url'], $post_arr['source']);
-        if (stripos($log['logs_msg'],'Page Text') !== false) $post_arr['pg_err'] = true;
+        // Check if LOG is an object before calling get_object_vars
+        if (is_object($response->LOG)) {
+            $log = get_object_vars($response->LOG);
+            //Log the error or request and return false
+            mct_ai_log($log['logs_topic'], $log['logs_type'], $log['logs_msg'], $log['logs_url'], $post_arr['source']);
+            if (stripos($log['logs_msg'],'Page Text') !== false) $post_arr['pg_err'] = true;
+        }
         return false;    
     }
 
@@ -673,9 +733,15 @@ function mct_ai_callcloud($type,$topic,$postvals){
     }
     $useragent = $type;
     if (isset($postvals['getit'])) $useragent .= " GetIt";
+    global $mct_ai_optarray;
     $ch = curl_init();
-    // SET URL FOR THE POST FORM LOGIN
-    curl_setopt($ch, CURLOPT_URL, 'YourURL');
+    //Get cloud URL from central accessor
+    $cloud_url = mct_ai_get_cloud_url();
+    if (empty($cloud_url)) {
+        mct_ai_log('Cloud', MCT_AI_LOG_ERROR, 'Cloud URL not configured - set ai_cloud_url option', $type);
+        return false;
+    }
+    curl_setopt($ch, CURLOPT_URL, $cloud_url);
     // ENABLE HTTP POST
     curl_setopt ($ch, CURLOPT_POST, 1);
     // SET POST FIELD to the content

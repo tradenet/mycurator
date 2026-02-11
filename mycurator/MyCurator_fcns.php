@@ -28,6 +28,16 @@ function mct_ai_log($topic, $type, $msg, $url, $source = null){
     
 }
 
+// Central accessor for configured cloud URL. Prefer option then fallback constant.
+function mct_ai_get_cloud_url(){
+    global $mct_ai_optarray;
+    if (!empty($mct_ai_optarray['ai_cloud_url'])) {
+        return trim($mct_ai_optarray['ai_cloud_url']);
+    }
+    if (defined('MCT_AI_CLOUD_URL') && MCT_AI_CLOUD_URL) return MCT_AI_CLOUD_URL;
+    return '';
+}
+
 function mct_ai_postlink($args, $update = false){
     //Post a link to db
     //Requires specific $arg fields which have been validated and cleansed already
@@ -443,24 +453,42 @@ function mct_ai_getplan($force = false){
         update_option('mct_ai_options',$mct_ai_optarray);
         return false; //error already logged
     }
+    
+    // Check for error response format (newer error handling)
+    if (isset($response->error)) {
+        mct_ai_log('CloudService', MCT_AI_LOG_ERROR, 'Cloud Error: '.$response->error, '');
+        $mct_ai_optarray['ai_plan'] = '';
+        update_option('mct_ai_options',$mct_ai_optarray);
+        return false;
+    }
+    
     if (!empty($response->LOG)) {
-        $log = get_object_vars($response->LOG);
-        //Log the error
-        mct_ai_log($log['logs_topic'], $log['logs_type'], $log['logs_msg'], $log['logs_url']);
-        //If Invalid Token, Version or Expired set plan as error, else return (and leave whatever plan we have)
-        if (strpos($log['logs_msg'],"Token") !== false || strpos($log['logs_msg'],"Expired") !== false || strpos($log['logs_msg'],"Version") !== false) {
-            $mct_ai_optarray['ai_plan'] = serialize(array('name'=> $log['logs_msg'], 'max' => -1  ));
-            set_transient('mct_ai_getplan', 'checked',(60*5)); //Default is to wait for 5 minutes before checking
-            update_option('mct_ai_options',$mct_ai_optarray);
-            return false;
-        } else {
-            $mct_ai_optarray['ai_plan'] = '';
-            update_option('mct_ai_options',$mct_ai_optarray);
-            return false;    
+        // Check if LOG is an object before calling get_object_vars
+        if (is_object($response->LOG)) {
+            $log = get_object_vars($response->LOG);
+            //Log the error
+            mct_ai_log($log['logs_topic'], $log['logs_type'], $log['logs_msg'], $log['logs_url']);
+            //If Invalid Token, Version or Expired set plan as error, else return (and leave whatever plan we have)
+            if (strpos($log['logs_msg'],"Token") !== false || strpos($log['logs_msg'],"Expired") !== false || strpos($log['logs_msg'],"Version") !== false) {
+                $mct_ai_optarray['ai_plan'] = serialize(array('name'=> $log['logs_msg'], 'max' => -1  ));
+                set_transient('mct_ai_getplan', 'checked',(60*5)); //Default is to wait for 5 minutes before checking
+                update_option('mct_ai_options',$mct_ai_optarray);
+                return false;
+            }
         }
-    } else { //No error, so set plan 
+        $mct_ai_optarray['ai_plan'] = '';
+        update_option('mct_ai_options',$mct_ai_optarray);
+        return false;    
+    } else if (isset($response->planarr) && is_object($response->planarr)) { 
+        //No error, so set plan
         $mct_ai_optarray['ai_plan'] = serialize(get_object_vars($response->planarr));
         set_transient('mct_ai_getplan', 'checked',(60*60*24)); // Got a plan so wait for a day before we check again
+    } else {
+        // Unexpected response format
+        mct_ai_log('CloudService', MCT_AI_LOG_ERROR, 'Unexpected GetPlan response format', '');
+        $mct_ai_optarray['ai_plan'] = '';
+        update_option('mct_ai_options',$mct_ai_optarray);
+        return false;
     }
     update_option('mct_ai_options',$mct_ai_optarray);
     return true;
@@ -805,7 +833,7 @@ function mct_ai_get_tname_ai($post_id){
 }
 
 function mct_ai_traintoblog($thepost, $status){
-    global $wpdb, $ai_topic_tbl, $mct_ai_optarray, $user_ID;
+    global $wpdb, $ai_topic_tbl, $mct_ai_optarray, $user_ID, $ai_sl_pages_tbl;
     
     //Move a post - change post type from target_ai to post
     //read topic table for this category/tag
@@ -897,9 +925,64 @@ function mct_ai_traintoblog($thepost, $status){
             //Update the post
             $details['comment_status'] = get_option('default_comment_status');
             $details['ping_status'] = get_option('default_ping_status');
-            $details['post_content'] = mct_ai_gutenblocks(get_post_field('post_content', $thepost),$row['topic_type']);
+
+            // Ensure we export content: prefer saved page article if available, else existing post_content
+            $orig_content = get_post_field('post_content', $thepost);
+            $page = mct_ai_getslpage($thepost);
+            if (!empty($page)){
+                $article = mct_ai_getslarticle($page);
+                if (!empty($article)) {
+                    $orig_content = $article;
+                }
+            }
+            $details['post_content'] = mct_ai_gutenblocks($orig_content,$row['topic_type']);
+
+            // Ensure tags are preserved: if tags_input isn't set, use topic and ai_class terms
+            if (empty($details['tags_input'])){
+                $tag_names = array();
+                $topic_names = wp_get_object_terms($thepost,'topic',array('fields' => 'names'));
+                if (!empty($topic_names) && !is_wp_error($topic_names)) $tag_names = array_merge($tag_names, $topic_names);
+                $ai_names = wp_get_object_terms($thepost,'ai_class',array('fields' => 'names'));
+                if (!empty($ai_names) && !is_wp_error($ai_names)) $tag_names = array_merge($tag_names, $ai_names);
+                if (!empty($tag_names)) $details['tags_input'] = $tag_names;
+            }
+
             $details = apply_filters('mct_traintoblog_details', $details);
-            wp_update_post($details);
+            $update_result = wp_update_post($details, true);
+            if (!is_wp_error($update_result)) {
+                $new_content = get_post_field('post_content', $thepost);
+                $new_len = strlen(trim((string)$new_content));
+
+                // If the saved content is unexpectedly short compared to the content we intended to use,
+                // overwrite the original training post with the full content (preserve title and taxonomies).
+                $used_len = isset($post_len) ? $post_len : strlen(trim((string)$orig_content));
+                if ($used_len > 200 && $new_len < 100) {
+                    $overwrite = array(
+                        'ID' => $thepost,
+                        'post_content' => $orig_content,
+                        'post_title' => get_post_field('post_title', $thepost),
+                        'post_status' => $details['post_status'],
+                    );
+                    if (!empty($details['post_type'])) $overwrite['post_type'] = $details['post_type'];
+                    if (!empty($details['post_category'])) $overwrite['post_category'] = $details['post_category'];
+                    if (!empty($details['tags_input'])) $overwrite['tags_input'] = $details['tags_input'];
+                    if (!empty($details['tax_input'])) $overwrite['tax_input'] = $details['tax_input'];
+                    if (!empty($details['post_author'])) $overwrite['post_author'] = $details['post_author'];
+                    if (!empty($details['comment_status'])) $overwrite['comment_status'] = $details['comment_status'];
+                    if (!empty($details['ping_status'])) $overwrite['ping_status'] = $details['ping_status'];
+
+                    $res = wp_update_post($overwrite, true);
+                    if (is_wp_error($res)) {
+                        // If this failed we can't do much; leave as-is.
+                    } else {
+                        // Ensure taxonomies are in place
+                        $topic_terms = wp_get_object_terms($thepost,'topic',array('fields'=>'slugs'));
+                        if (!empty($topic_terms) && !is_wp_error($topic_terms)) wp_set_object_terms($thepost,$topic_terms,'topic',false);
+                        $ai_terms = wp_get_object_terms($thepost,'ai_class',array('fields'=>'slugs'));
+                        if (!empty($ai_terms) && !is_wp_error($ai_terms)) wp_set_object_terms($thepost,$ai_terms,'ai_class',false);
+                    }
+                }
+            }
             
             
         }
